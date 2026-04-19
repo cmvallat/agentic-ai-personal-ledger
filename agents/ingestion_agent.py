@@ -74,7 +74,13 @@ class IngestionAgent:
 
         # Keep only the columns we need
         df_cc = df_cc[["Description", "Debit", "Credit", "Category", "Date"]]
-        df_checking = df_checking[["Description", "Debit", "Credit", "Date"]]
+        df_checking = df_checking[["Description", "Debit", "Credit", "Date", "Balance"]]
+
+        # Store the complete checking data before any filtering happens —
+        # the Ledger Verification Agent needs all rows including payments
+        # and income to verify the running balance chain. Those rows get
+        # removed from df_checking later in _separate_transaction_types.
+        state.df_checking_raw = df_checking.copy()
 
         # Tag each transaction with its payment method
         df_cc["Method"] = "C1"
@@ -133,6 +139,7 @@ class IngestionAgent:
         # Positive = money left your account (expense).
         # Negative = money came back (refund).
         df_cc["Net"] = df_cc["Debit"].fillna(0) - df_cc["Credit"].fillna(0)
+        df_cc["OriginalNet"] = df_cc["Net"]  # preserved for payment batch verification
 
         # --- Income / paychecks from checking ---
         # Any credit in checking is income (paycheck, transfer in, etc.)
