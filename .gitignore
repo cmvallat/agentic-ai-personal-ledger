@@ -1,0 +1,15 @@
+# credentials and secrets
+config/config.json
+credentials.json
+*.json
+.env
+
+# python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# data files
+*.csv

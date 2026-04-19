@@ -1,0 +1,6 @@
+anthropic
+gspread
+gspread-formatting
+google-auth
+pandas
+python-dotenv
