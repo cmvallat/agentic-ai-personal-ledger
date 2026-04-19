@@ -25,18 +25,20 @@ orchestration, shared state, tool use, and reflection.
 
 ## Agent architecture
 
+```
 main.py → Orchestrator
-│
-├── IngestionAgent
-│ Load CSVs → normalize → separate payments/income
-│ → deduplicate against existing sheet
-│
-├── CategorizationAgent
-│ Keyword map → Claude for unknowns → reflection pass
-│
-└── SheetsWriterAgent
-Create/update monthly tabs → write transactions
-→ summary section → category totals → formatting
+              │
+              ├── IngestionAgent
+              │     Load CSVs → normalize → separate payments/income
+              │     → deduplicate against existing sheet
+              │
+              ├── CategorizationAgent
+              │     Keyword map → Claude for unknowns → reflection pass
+              │
+              └── SheetsWriterAgent
+                    Create/update monthly tabs → write transactions
+                    → summary section → category totals → formatting
+```
 
 Each agent receives a shared `LedgerState` object, does its work,
 and returns the updated state to the orchestrator.
@@ -110,8 +112,11 @@ python3 main.py --dry-run
 
 ## Example output
 
+```
 ====================================================
-🤖 AGENTIC AI PERSONAL LEDGER
+   🤖 AGENTIC AI PERSONAL LEDGER
+====================================================
+
 --- IngestionAgent ---
 [IngestionAgent] Loading CSVs...
 [IngestionAgent] Loaded 48 CC rows, 14 checking rows.
@@ -121,52 +126,64 @@ python3 main.py --dry-run
 [IngestionAgent] Combined total: 51 transactions.
 [IngestionAgent] Checking for duplicates in existing sheet...
 [IngestionAgent] 11 duplicates skipped, 40 transactions remaining.
+
 --- CategorizationAgent ---
 [CategorizationAgent] Keyword map: 28 matched, 12 unknown.
 [CategorizationAgent] Sending 12 unknowns to Claude...
 [CategorizationAgent] Reflecting on 12 categorizations...
-[CategorizationAgent] ⚠️ Flagged: 'WHOLESOME MKTPLACE' → Shopping (62%)
+[CategorizationAgent] ⚠️  Flagged: 'WHOLESOME MKTPLACE' → Shopping (62%)
+
 --- SheetsWriterAgent ---
 [SheetsWriterAgent] Writing March 2026...
 [SheetsWriterAgent] ✅ March 2026 complete.
 [SheetsWriterAgent] Writing April 2026...
 [SheetsWriterAgent] ✅ April 2026 complete.
+
 ====================================================
-✅ PIPELINE COMPLETE
+   ✅ PIPELINE COMPLETE
+====================================================
+
 📥 Ingestion
-40 transactions loaded
-11 duplicates skipped
+   40 transactions loaded
+   11 duplicates skipped
+
 🧠 Categorization
-Keyword map: 28 transactions
-Claude: 10 transactions
-Corrections: 1 by reflection
-Flagged: 1 for your review
+   Keyword map:  28 transactions
+   Claude:       10 transactions
+   Corrections:  1 by reflection
+   Flagged:      1 for your review
+
 📊 Google Sheets
-✅ March 2026
-✅ April 2026
-🔗 https://docs.google.com/spreadsheets/d/...
+   ✅ March 2026
+   ✅ April 2026
+
+   🔗 https://docs.google.com/spreadsheets/d/...
+
 ====================================================
+```
 
 ---
 
 ## Project structure
 
+```
 agentic-ai-personal-ledger/
-├── main.py # Entry point, CLI arguments
-├── orchestrator.py # Coordinates agents, manages flow
-├── state.py # Shared LedgerState dataclass
-├── mappings.py # Keyword maps for categories and descriptions
+├── main.py                      # Entry point, CLI arguments
+├── orchestrator.py              # Coordinates agents, manages flow
+├── state.py                     # Shared LedgerState dataclass
+├── mappings.py                  # Keyword maps for categories and descriptions
 ├── agents/
-│ ├── ingestion_agent.py # Load, normalize, deduplicate
-│ ├── categorization_agent.py # Keyword map + Claude + reflection
-│ └── sheets_writer_agent.py # Write results to Google Sheets
+│   ├── ingestion_agent.py       # Load, normalize, deduplicate
+│   ├── categorization_agent.py  # Keyword map + Claude + reflection
+│   └── sheets_writer_agent.py   # Write results to Google Sheets
 ├── utils/
-│ ├── sheets.py # Google Sheets auth and helpers
-│ └── formatting.py # Sheet formatting utilities
+│   ├── sheets.py                # Google Sheets auth and helpers
+│   └── formatting.py            # Sheet formatting utilities
 ├── config/
-│ └── config.json # Credentials paths and settings (not committed)
+│   └── config.json              # Credentials paths and settings (not committed)
 ├── requirements.txt
-└── .env # Anthropic API key (not committed)
+└── .env                         # Anthropic API key (not committed)
+```
 
 ---
 
