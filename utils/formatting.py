@@ -66,6 +66,7 @@ def apply_conditional_formatting(
     rules.append(green_rule)
     rules.save()
 
+# No longer used, but keeping just in case. This is to resize a single column; currently we are resizing all columns
 def auto_resize_column(spreadsheet: gspread.Spreadsheet, worksheet: gspread.Worksheet, col_index: int) -> None:
     """
     Auto-resize a column to fit its longest content, equivalent to
@@ -88,6 +89,85 @@ def auto_resize_column(spreadsheet: gspread.Spreadsheet, worksheet: gspread.Work
         ]
     }
     spreadsheet.batch_update(body)
+
+def auto_resize_columns(
+    spreadsheet: gspread.Spreadsheet,
+    worksheet: gspread.Worksheet,
+    start_col_index: int = 0,
+    end_col_index: int = 10,
+    padding_pixels: int = 20
+) -> None:
+    """
+    Auto-resize a range of columns to fit their longest content,
+    then add padding pixels to each column for breathing room.
+    col indices are 0-based (column A = 0, column B = 1, etc).
+    """
+    sheet_id = worksheet._properties["sheetId"]
+
+    # Step 1 — auto-resize to fit content
+    spreadsheet.batch_update({
+        "requests": [
+            {
+                "autoResizeDimensions": {
+                    "dimensions": {
+                        "sheetId": sheet_id,
+                        "dimension": "COLUMNS",
+                        "startIndex": start_col_index,
+                        "endIndex": end_col_index
+                    }
+                }
+            }
+        ]
+    })
+
+    # Step 2 — fetch current column widths via the Sheets API directly
+    # gspread exposes the underlying Google API client via spreadsheet.client
+    sheets_service = spreadsheet.client.batch_update
+    spreadsheet_id = spreadsheet.id
+
+    metadata = spreadsheet.client.request(
+        "get",
+        f"https://sheets.googleapis.com/v4/spreadsheets/{spreadsheet_id}",
+        params={
+            "includeGridData": False,
+            "fields": "sheets.properties.sheetId,sheets.data.columnMetadata"
+        }
+    ).json()
+
+    # Find column metadata for this worksheet
+    col_metadata = []
+    for s in metadata.get("sheets", []):
+        if s["properties"]["sheetId"] == sheet_id:
+            col_metadata = (
+                s.get("data", [{}])[0].get("columnMetadata", [])
+            )
+            break
+
+    # Step 3 — build padding requests using current widths
+    padding_requests = []
+    for col_index in range(start_col_index, end_col_index):
+        if col_index < len(col_metadata):
+            current_width = col_metadata[col_index].get("pixelSize", 100)
+        else:
+            current_width = 100
+
+        padding_requests.append({
+            "updateDimensionProperties": {
+                "range": {
+                    "sheetId": sheet_id,
+                    "dimension": "COLUMNS",
+                    "startIndex": col_index,
+                    "endIndex": col_index + 1
+                },
+                "properties": {
+                    "pixelSize": current_width + padding_pixels
+                },
+                "fields": "pixelSize"
+            }
+        })
+
+    if padding_requests:
+        spreadsheet.batch_update({"requests": padding_requests})
 
 def bold_row(worksheet: gspread.Worksheet, row: int) -> None:
     """Bold an entire row by row number (1-based)."""

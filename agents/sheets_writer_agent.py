@@ -1,10 +1,11 @@
 import json
 import os
+import time
 import pandas as pd
 import gspread
 from gspread_formatting import CellFormat, TextFormat, format_cell_range
 from state import LedgerState
-from utils.sheets import authorize_google_sheets
+from utils.sheets import authorize_google_sheets, sheets_api_call_with_retry
 from utils.formatting import bold_row, format_sheet, apply_conditional_formatting
 
 
@@ -58,7 +59,7 @@ class SheetsWriterAgent:
         """
         base_col_count = 5  # Date, Expense, Amount, Category, Method
         extra_cols = 1 if "Flagged" in month_txns.columns else 0
-        return base_col_count + extra_cols + 2
+        return base_col_count + extra_cols + 1
 
     def _write_monthly_sheets(
         self,
@@ -106,7 +107,7 @@ class SheetsWriterAgent:
             month_txns["Date"] = month_txns["Date"].dt.strftime("%m/%d/%y")
 
             # Clear the sheet before writing so we don't stack on old data
-            sh.clear()
+            sheets_api_call_with_retry(sh.clear)
 
             self._write_transactions(sh, spreadsheet, month_txns)
             self._write_summary(sh, spreadsheet, month_txns, curr_month_date, df_income, month)
@@ -117,6 +118,12 @@ class SheetsWriterAgent:
 
             state.sheets_written.append(month_str)
             print(f"[{self.name}] ✅ {month_str} complete.")
+
+        # Brief pause between months to stay under rate limits
+        # when writing multiple sheets in one run
+        if len(months) > 1:
+            print(f"[{self.name}] Pausing briefly to respect API rate limits...")
+            time.sleep(3)
 
         state.sheet_url = (
             f"https://docs.google.com/spreadsheets/d/{self.config['spreadsheet_key']}"
@@ -130,7 +137,7 @@ class SheetsWriterAgent:
         spreadsheet: gspread.Spreadsheet,
         month_txns: pd.DataFrame
     ) -> None:
-        from utils.formatting import auto_resize_column
+        from utils.formatting import auto_resize_columns
 
         base_columns = ["Date", "Description", "Net", "Category", "Method"]
         headers = ["Date", "Expense", "Amount", "Category", "Method"]
@@ -147,14 +154,19 @@ class SheetsWriterAgent:
             # Review Note is the 6th column, index 5 (0-based)
             review_note_col_index = len(base_columns) - 1
 
-        sh.append_row(headers)
+        sheets_api_call_with_retry(sh.append_row, headers)
         transactions = month_txns[base_columns].values.tolist()
         if transactions:
-            sh.append_rows(transactions)
+            sheets_api_call_with_retry(sh.append_rows, transactions)
 
-        # Auto-resize the Review Note column if it was written
-        if review_note_col_index is not None:
-            auto_resize_column(spreadsheet, sh, review_note_col_index)
+        # Auto-resize all columns in one API call
+        # end_col_index is exclusive so len(headers) covers all written columns
+        auto_resize_columns(
+            spreadsheet,
+            sh,
+            start_col_index=0,
+            end_col_index=len(headers)
+        )
 
     def _write_summary(
         self,
@@ -169,6 +181,51 @@ class SheetsWriterAgent:
         summary_row = 1
         summary_col_letter = chr(64 + start_col + 1)
 
+        # Calculate total income for this month
+        total_income = 0.0
+        if df_income is not None:
+            month_income = df_income[
+                df_income["Date"].dt.to_period("M") == month
+            ].copy()
+            if not month_income.empty:
+                total_income = month_income["Amount"].sum()
+
+        total_spending = month_txns["Net"].sum()
+
+        # Build all summary rows as a 2D array and write in one API call
+        # Column start_col = labels, column start_col+1 = values
+        end_formula = (
+            f"={summary_col_letter}{summary_row + 1}"
+            f"-{summary_col_letter}{summary_row + 2}"
+            f"+{summary_col_letter}{summary_row + 3}"
+        )
+        ou_formula = (
+            f"={summary_col_letter}{summary_row + 4}"
+            f"-{summary_col_letter}{summary_row + 1}"
+        )
+
+        summary_data = [
+            ["Summary", ""],
+            ["Start amount", ""],        # value filled by link_dynamic below
+            ["Total spending", round(total_spending, 2)],
+            ["Total income", round(total_income, 2)],
+            ["End amount", end_formula],
+            ["", ""],
+            ["O/U budget", ou_formula],
+        ]
+
+        # Convert start_col to A1 notation for the range
+        start_col_letter = chr(64 + start_col)
+        end_col_letter = chr(64 + start_col + 1)
+        summary_range = (
+            f"{start_col_letter}{summary_row}"
+            f":{end_col_letter}{summary_row + len(summary_data) - 1}"
+        )
+
+        sh.update(summary_range, summary_data, value_input_option="USER_ENTERED")
+
+        # Link start amount to previous month's end balance —
+        # done after the batch write so it overwrites the empty string
         from utils.sheets import link_dynamic_previous_month_balance
         link_dynamic_previous_month_balance(
             spreadsheet,
@@ -176,40 +233,7 @@ class SheetsWriterAgent:
             f"{summary_col_letter}{summary_row + 1}"
         )
 
-        sh.update_cell(1, start_col, "Summary")
-        sh.update_cell(summary_row + 1, start_col, "Start amount")
-
-        total_spending = month_txns["Net"].sum()
-        sh.update_cell(summary_row + 2, start_col, "Total spending")
-        sh.update_cell(summary_row + 2, start_col + 1, total_spending)
-
-        if df_income is not None:
-            month_income = df_income[
-                df_income["Date"].dt.to_period("M") == month
-            ].copy()
-            if not month_income.empty:
-                total_income = month_income["Amount"].sum()
-                sh.update_cell(summary_row + 3, start_col, "Total income")
-                sh.update_cell(summary_row + 3, start_col + 1, total_income)
-
-        sh.update_cell(summary_row + 4, start_col, "End amount")
-        sh.update_cell(
-            summary_row + 4, start_col + 1,
-            f"={summary_col_letter}{summary_row + 1}"
-            f"-{summary_col_letter}{summary_row + 2}"
-            f"+{summary_col_letter}{summary_row + 3}"
-        )
-
-        sh.update_cell(summary_row + 5, start_col, "")
-        sh.update_cell(summary_row + 5, start_col + 1, "")
-
-        sh.update_cell(summary_row + 6, start_col, "O/U budget")
-        sh.update_cell(
-            summary_row + 6, start_col + 1,
-            f"={summary_col_letter}{summary_row + 4}"
-            f"-{summary_col_letter}{summary_row + 1}"
-        )
-
+        # Conditional formatting on O/U budget cell
         ou_budget_cell = f"{summary_col_letter}{summary_row + 6}"
         apply_conditional_formatting(ou_budget_cell, sh)
 
@@ -222,16 +246,22 @@ class SheetsWriterAgent:
         summary_row = 1
         category_row = summary_row + 9
 
+        # Calculate the exact last row of transaction data
+        # Row 1 is the header, rows 2 onwards are transactions
+        last_txn_row = len(month_txns) + 1  # +1 for the header row
+
         sh.update_cell(category_row, start_col, "Category")
         sh.update_cell(category_row, start_col + 1, "Total")
 
+        # Use a bounded range C2:C{last_txn_row} so that income and
+        # payment rows written below the transactions are excluded
         formula = (
             '={SORT({'
-            'FILTER(UNIQUE(D2:D), LEN(UNIQUE(D2:D))), '
-            'ARRAYFORMULA(SUMIF(D2:D, FILTER(UNIQUE(D2:D), LEN(UNIQUE(D2:D))), C2:C))'
+            f'FILTER(UNIQUE(D2:D{last_txn_row}), LEN(UNIQUE(D2:D{last_txn_row}))), '
+            f'ARRAYFORMULA(SUMIF(D2:D{last_txn_row}, FILTER(UNIQUE(D2:D{last_txn_row}), LEN(UNIQUE(D2:D{last_txn_row}))), C2:C{last_txn_row}))'
             '}, 2, FALSE); '
             '{"",""}; '
-            '{"Total", SUM(C2:C)}}'
+            f'{{"Total", SUM(C2:C{last_txn_row})}}}}'
         )
         sh.update_cell(category_row + 1, start_col, formula)
 
@@ -262,17 +292,17 @@ class SheetsWriterAgent:
 
             if not month_income.empty:
                 # Two blank rows for breathing room
-                sh.append_row([])
-                sh.append_row([])
+                sheets_api_call_with_retry(sh.append_row, [])
+                sheets_api_call_with_retry(sh.append_row, [])
 
                 # Section header row — same columns as transactions
                 # Read current row count so we know which row to bold
                 current_row = len(sh.get_all_values()) + 1
-                sh.append_row(["Date", "Income", "Amount", "", ""])
+                sheets_api_call_with_retry(sh.append_row, ["Date", "Income", "Amount", "", ""])
                 bold_row(sh, current_row)
 
                 # Income rows
-                sh.append_rows(
+                sheets_api_call_with_retry(sh.append_rows, 
                     month_income[["Date", "Description", "Amount"]].values.tolist()
                 )
 
@@ -285,15 +315,15 @@ class SheetsWriterAgent:
 
             if not month_payments.empty:
                 # Two blank rows for breathing room
-                sh.append_row([])
-                sh.append_row([])
+                sheets_api_call_with_retry(sh.append_row, [])
+                sheets_api_call_with_retry(sh.append_row, [])
 
                 # Section header row
                 current_row = len(sh.get_all_values()) + 1
-                sh.append_row(["Date", "Payment", "Amount", "", ""])
+                sheets_api_call_with_retry(sh.append_row, ["Date", "Payment", "Amount", "", ""])
                 bold_row(sh, current_row)
 
                 # Payment rows
-                sh.append_rows(
+                sheets_api_call_with_retry(sh.append_rows, 
                     month_payments[["Date", "Description", "Amount"]].values.tolist()
                 )
