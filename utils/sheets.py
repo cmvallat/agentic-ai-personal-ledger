@@ -1,6 +1,8 @@
 from datetime import timedelta
 import gspread
 from google.oauth2.service_account import Credentials
+import time
+from gspread.exceptions import APIError
 
 
 def authorize_google_sheets(credentials_path: str) -> gspread.Client:
@@ -81,3 +83,21 @@ def link_dynamic_previous_month_balance(
         print(f"'End amount' not found in {prev_month_name}, using 0 as starting balance")
         spreadsheet.worksheet(curr_month_name).update_acell(start_cell, 0)
         return "0"
+
+def sheets_api_call_with_retry(func, *args, max_retries=5, **kwargs):
+    """
+    Execute a gspread API call with exponential backoff retry logic.
+    Handles 429 (rate limit) errors automatically.
+    """
+    for attempt in range(max_retries):
+        try:
+            return func(*args, **kwargs)
+        except APIError as e:
+            if "429" in str(e) or "Quota exceeded" in str(e):
+                wait_time = (2 ** attempt) + 1  # 3, 5, 9, 17, 33 seconds
+                print(f"Rate limit hit — waiting {wait_time}s before retry "
+                      f"(attempt {attempt + 1}/{max_retries})...")
+                time.sleep(wait_time)
+            else:
+                raise
+    raise Exception(f"API call failed after {max_retries} retries")

@@ -251,6 +251,14 @@ class LedgerVerificationAgent:
             # Find the "End amount" cell in the previous sheet
             try:
                 end_cell = prev_sheet.find("End amount")
+
+                if end_cell is None:
+                    print(
+                        f"[{self.name}]   'End amount' label not found in "
+                        f"{prev_month_str} — skipping."
+                    )
+                    continue
+
                 # Value is one column to the right of the label
                 end_value_raw = prev_sheet.cell(
                     end_cell.row, end_cell.col + 1

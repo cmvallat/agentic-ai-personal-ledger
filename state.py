@@ -19,12 +19,15 @@ class LedgerState:
     dedup_report: dict = field(default_factory=dict)
     df_checking_raw: Optional[pd.DataFrame] = None
 
+    # Set by Categorization Agent
+    categorization_report: dict = field(default_factory=dict)
+
     # Set by Ledger Verification Agent
     ledger_valid: bool = False
     ledger_report: dict = field(default_factory=dict)
 
-    # Set by Categorization Agent
-    categorization_report: dict = field(default_factory=dict)
+    # Set by Batch Assignment Agent
+    batch_report: dict = field(default_factory=dict)
 
     # Set by Sheets Writer Agent
     sheets_written: list = field(default_factory=list)

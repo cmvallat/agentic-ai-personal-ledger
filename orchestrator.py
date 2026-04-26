@@ -3,6 +3,7 @@ from agents.ingestion_agent import IngestionAgent
 from agents.categorization_agent import CategorizationAgent
 from agents.ledger_verification_agent import LedgerVerificationAgent
 from agents.sheets_writer_agent import SheetsWriterAgent
+from agents.batch_assignment_agent import BatchAssignmentAgent
 
 
 class Orchestrator:
@@ -11,6 +12,7 @@ class Orchestrator:
             IngestionAgent(),
             CategorizationAgent(),
             LedgerVerificationAgent(),
+            BatchAssignmentAgent(),
             SheetsWriterAgent(),
         ]
 
@@ -66,6 +68,13 @@ class Orchestrator:
         for check in state.ledger_report.get("checks", []):
             status = "✅" if check["passed"] else "❌"
             print(f"   {status} {check['name']}")
+
+        batch = state.batch_report
+        if batch:
+            print(f"\n📦 Batch Assignment")
+            print(f"   Payments confirmed: {batch.get('payments_confirmed', 0)}")
+            print(f"   Payments flagged:   {batch.get('payments_flagged', 0)}")
+            print(f"   Pending:            {batch.get('transactions_pending', 0)} transactions")
 
         print(f"\n📊 Google Sheets")
         if state.dry_run:

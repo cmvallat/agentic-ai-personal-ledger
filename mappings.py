@@ -10,6 +10,7 @@ category_map = {
     "potash": "Groceries",
     "jewel osco": "Groceries",
     "walgreens": "Groceries",
+    "cvs": "Groceries",
 
     # Common restaurants
     "chick-fil-a": "Dining Out",
@@ -43,6 +44,8 @@ category_map = {
 
     # Wardrobe
     "delaware cleaners": "Wardrobe",
+    "dry cleaners": "Wardrobe",
+    "dry cleaner": "Wardrobe",
 
     # Gym
     "ffc": "Gym",
