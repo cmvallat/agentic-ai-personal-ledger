@@ -74,8 +74,9 @@ class LedgerVerificationAgent:
         # Drop rows where Balance is missing — can't verify those
         df = df.dropna(subset=["Balance"])
 
-        # Sort oldest-first so we walk forward through time
-        df = df.sort_values("Date").reset_index(drop=True)
+        # Sort oldest-first. The bank CSV arrives newest-first, so reversing
+        # before a stable sort preserves chronological order within same-date groups.
+        df = df.iloc[::-1].sort_values("Date", kind="stable").reset_index(drop=True)
 
         # Walk every consecutive pair of rows
         # Rule: balance[i] = balance[i-1] - debit[i] + credit[i]

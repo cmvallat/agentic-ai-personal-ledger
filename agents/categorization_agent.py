@@ -59,7 +59,8 @@ Each object must have exactly these fields:
 Do not include any explanation, markdown, or extra text — just the JSON array."""
 
 CONFIDENCE_THRESHOLD = 80
-BATCH_SIZE = 50
+BATCH_SIZE = 50           # for categorization calls
+REFLECTION_BATCH_SIZE = 25  # for reflection calls — more verbose output
 
 
 def categorize(desc: str) -> str:
@@ -221,10 +222,10 @@ class CategorizationAgent:
 
         # Send in batches
         all_results = []
-        total_batches = (len(transactions_to_review) + BATCH_SIZE - 1) // BATCH_SIZE
+        total_batches = (len(transactions_to_review) + REFLECTION_BATCH_SIZE - 1) // REFLECTION_BATCH_SIZE        
 
-        for batch_num, i in enumerate(range(0, len(transactions_to_review), BATCH_SIZE), 1):
-            batch = transactions_to_review[i : i + BATCH_SIZE]
+        for batch_num, i in enumerate(range(0, len(transactions_to_review), REFLECTION_BATCH_SIZE), 1):
+            batch = transactions_to_review[i : i + REFLECTION_BATCH_SIZE]
             print(f"[{self.name}] Reflection batch {batch_num}/{total_batches}...")
 
             batch_results = self._call_claude_reflect(batch)
@@ -325,14 +326,9 @@ class CategorizationAgent:
         return json.loads(raw)
 
     def _call_claude_reflect(self, transactions: list[dict]) -> list[dict]:
-        """
-        Send a batch of already-categorized transactions to Claude
-        for reflection. Claude reviews each one, assigns a confidence
-        score, flags low-confidence ones, and can correct mistakes.
-        """
         response = self.client.messages.create(
             model="claude-haiku-4-5-20251001",
-            max_tokens=2048,
+            max_tokens=4096,
             system=REFLECTION_SYSTEM_PROMPT,
             messages=[
                 {
@@ -351,4 +347,17 @@ class CategorizationAgent:
                 if not line.startswith("```")
             ).strip()
 
-        return json.loads(raw)
+        # Try direct parse first
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            # Fallback — extract the first JSON array found in the response
+            import re
+            match = re.search(r'\[.*\]', raw, re.DOTALL)
+            if match:
+                extracted = match.group(0)
+                return json.loads(extracted)
+            raise ValueError(
+                f"Could not extract valid JSON array from reflection response: "
+                f"{raw[:200]}"
+            )
