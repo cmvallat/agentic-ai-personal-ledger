@@ -44,6 +44,7 @@ if __name__ == "__main__":
         cc_csv_path=cc_path,
         checking_csv_path=checking_path,
         dry_run=args.dry_run,
+        features=config.get("features", {})
     )
 
     orchestrator = Orchestrator()

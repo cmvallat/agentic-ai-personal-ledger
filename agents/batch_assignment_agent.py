@@ -442,7 +442,7 @@ Please try again with a different combination."""
         """Send the prompt to Claude and parse the JSON response."""
         response = self.client.messages.create(
             model="claude-opus-4-6",
-            max_tokens=2048,
+            max_tokens=4096,
             system="""You are a financial batch assignment engine.
     You ALWAYS respond with valid JSON only.
     No prose, no markdown, no explanation outside the JSON object.

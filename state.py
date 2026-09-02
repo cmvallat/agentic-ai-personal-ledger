@@ -34,3 +34,13 @@ class LedgerState:
     sheet_url: str = ""
     write_success: bool = False
 
+    #feature flags
+    features: dict = field(default_factory=lambda: {
+        "categorization_keyword_map": True,
+        "categorization_claude": True,
+        "categorization_reflection": True,
+        "batch_assignment": True,
+        "ledger_verification": True,
+        "sheets_writer": True
+    })
+

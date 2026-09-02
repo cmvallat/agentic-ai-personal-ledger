@@ -84,22 +84,26 @@ class CategorizationAgent:
             print(f"[{self.name}] No transactions to categorize. Skipping.")
             return state
 
-        # Step 1: Keyword map pass
-        state = self._keyword_map_pass(state)
+        features = state.features
 
-        # Step 2: Claude pass for unknowns
-        state = self._claude_pass(state)
+        if features.get("categorization_keyword_map", True):
+            state = self._keyword_map_pass(state)
+        else:
+            print(f"[{self.name}] Keyword map skipped — feature flag off.")
 
-        # Step 3: Reflection pass
-        state = self._reflection_pass(state)
+        if features.get("categorization_claude", True):
+            state = self._claude_pass(state)
+        else:
+            print(f"[{self.name}] Claude categorization skipped — feature flag off.")
+
+        if features.get("categorization_reflection", True):
+            state = self._reflection_pass(state)
+        else:
+            print(f"[{self.name}] Reflection skipped — feature flag off.")
 
         known = len(state.df_all[state.df_all["Category"] != "Misc"])
         unknown = len(state.df_all[state.df_all["Category"] == "Misc"])
-        flagged = len(state.df_all[state.df_all.get("Flagged", False) == True]) if "Flagged" in state.df_all.columns else 0
-        print(
-            f"[{self.name}] Done. {known} categorized, "
-            f"{unknown} Misc, {flagged} flagged for review."
-        )
+        print(f"[{self.name}] Done. {known} categorized, {unknown} Misc.")
         return state
 
     # ------------------------------------------------------------------ #
@@ -303,7 +307,7 @@ class CategorizationAgent:
         """
         response = self.client.messages.create(
             model="claude-haiku-4-5-20251001",
-            max_tokens=1024,
+            max_tokens=2048,
             system=SYSTEM_PROMPT,
             messages=[
                 {
@@ -332,7 +336,7 @@ class CategorizationAgent:
         """
         response = self.client.messages.create(
             model="claude-haiku-4-5-20251001",
-            max_tokens=2048,
+            max_tokens=4096,
             system=REFLECTION_SYSTEM_PROMPT,
             messages=[
                 {
