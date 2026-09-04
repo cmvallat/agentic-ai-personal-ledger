@@ -44,6 +44,10 @@ class SheetsWriterAgent:
 
         state = self._write_monthly_sheets(state, spreadsheet)
 
+        if state.analysis_report:
+            print(f"[{self.name}] Writing Insights tab...")
+            self._write_insights_tab(state, spreadsheet)
+
         print(f"[{self.name}] Done. Sheets written: {', '.join(state.sheets_written)}")
         return state
 
@@ -297,3 +301,118 @@ class SheetsWriterAgent:
                 sh.append_rows(
                     month_payments[["Date", "Description", "Amount"]].values.tolist()
                 )
+
+    def _write_insights_tab(
+        self,
+        state: LedgerState,
+        spreadsheet: gspread.Spreadsheet
+    ) -> None:
+        analysis = state.analysis_report
+
+        try:
+            sh = spreadsheet.worksheet("Insights")
+        except gspread.exceptions.WorksheetNotFound:
+            sh = spreadsheet.add_worksheet(title="Insights", rows="200", cols="10")
+
+        sh.clear()
+
+        # Build all rows in memory so we can write in one batch
+        rows = []
+        bold_rows = []  # 1-based row indices to bold after writing
+
+        def header(text):
+            bold_rows.append(len(rows) + 1)
+            rows.append([text])
+
+        def col_headers(*labels):
+            bold_rows.append(len(rows) + 1)
+            rows.append(list(labels))
+
+        def data(*values):
+            rows.append(list(values))
+
+        def blank():
+            rows.append([])
+
+        header("Spending Insights")
+        blank()
+
+        # 1. AI Suggestions
+        suggestions = analysis.get("suggestions", [])
+        if suggestions:
+            header("AI Suggestions")
+            for s in suggestions:
+                data(f"• {s}")
+            blank()
+
+        # 2. Monthly Spending Totals
+        monthly_trends = analysis.get("monthly_trends", [])
+        if len(monthly_trends) > 1:
+            month_labels = [item["month"] for item in monthly_trends]
+
+            header("Monthly Spending Totals")
+            col_headers("Month", "Total ($)")
+            for item in monthly_trends:
+                data(item["month"], item["total"])
+            blank()
+
+        # 3. Top Merchants
+        header("Top Merchants")
+        col_headers("Merchant", "Total ($)", "Visits")
+        for item in analysis.get("top_merchants", []):
+            data(item["merchant"], item["total"], item["visits"])
+        blank()
+
+        # 4. Category Breakdown
+        header("Category Breakdown")
+        col_headers("Category", "Total ($)", "% of Spend")
+        for item in analysis.get("category_breakdown", []):
+            data(item["category"], item["total"], item["pct"])
+        blank()
+
+        # 5. Spending by Category per Month (immediately after Category Breakdown)
+        if len(monthly_trends) > 1:
+            all_categories = sorted(
+                {cat for item in monthly_trends for cat in item["by_category"]}
+            )
+            header("Spending by Category per Month")
+            col_headers("Category", *month_labels)
+            for cat in all_categories:
+                row_values = [item["by_category"].get(cat, 0.0) for item in monthly_trends]
+                data(cat, *row_values)
+            blank()
+
+        # 6. Spending by Day of Week
+        header("Spending by Day of Week")
+        col_headers("Day", "Total ($)", "Transactions", "Avg per Transaction ($)")
+        for item in sorted(analysis.get("day_of_week", []), key=lambda x: -x["total"]):
+            data(item["day"], item["total"], item["txn_count"], item["avg_per_txn"])
+        blank()
+
+        # 7. Spending by Time of Month
+        header("Spending by Time of Month")
+        col_headers("Period", "Total ($)", "Transactions", "% of Spend")
+        for item in analysis.get("time_of_month", []):
+            data(item["period"], item["total"], item["txn_count"], item["pct"])
+        blank()
+
+        # 8. Holiday-Adjacent Spending
+        holiday_data = analysis.get("holiday_spending", [])
+        if holiday_data:
+            header("Holiday-Adjacent Spending")
+            col_headers("Holiday", "Date", "Transactions", "Total ($)")
+            for item in holiday_data:
+                data(item["holiday"], item["date"], item["txn_count"], item["total"])
+            blank()
+
+        # Single batch write
+        if rows:
+            sh.update("A1", rows)
+
+        # Bold all section/column header rows
+        fmt = CellFormat(textFormat=TextFormat(bold=True))
+        for row_num in bold_rows:
+            format_cell_range(sh, f"A{row_num}:E{row_num}", fmt)
+
+        state.sheets_written.append("Insights")
+        print(f"[{self.name}] ✅ Insights tab written.")

@@ -21,6 +21,9 @@ class LedgerState:
     # Set by Categorization Agent
     categorization_report: dict = field(default_factory=dict)
 
+    # Set by Spending Analysis Agent
+    analysis_report: dict = field(default_factory=dict)
+
     # Set by Sheets Writer Agent
     sheets_written: list = field(default_factory=list)
     sheet_url: str = ""

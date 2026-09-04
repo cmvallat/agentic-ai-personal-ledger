@@ -15,7 +15,7 @@ CATEGORIES = [
     "Parking and Transportation",
     "Rent",
     "Loans",
-    "Wardrobe"
+    "Wardrobe",
     "Renewals",
     "Fun",
     "Haircut",

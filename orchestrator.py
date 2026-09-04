@@ -1,6 +1,7 @@
 from state import LedgerState
 from agents.ingestion_agent import IngestionAgent
 from agents.categorization_agent import CategorizationAgent
+from agents.spending_analysis_agent import SpendingAnalysisAgent
 from agents.sheets_writer_agent import SheetsWriterAgent
 
 
@@ -9,6 +10,7 @@ class Orchestrator:
         self.agents = [
             IngestionAgent(),
             CategorizationAgent(),
+            SpendingAnalysisAgent(),
             SheetsWriterAgent(),
         ]
 
@@ -48,6 +50,14 @@ class Orchestrator:
         print(f"   Claude:       {cat.get('claude_categorized', 0)} transactions")
         print(f"   Corrections:  {cat.get('corrected_by_reflection', 0)} by reflection")
         print(f"   Flagged:      {cat.get('flagged', 0)} for your review")
+
+        # Spending Analysis
+        analysis = state.analysis_report
+        if analysis:
+            top = analysis.get("category_breakdown", [{}])[0]
+            print(f"\n📈 Spending Analysis")
+            print(f"   Top category:  {top.get('category', 'N/A')} (${top.get('total', 0):,.2f})")
+            print(f"   Suggestions:   {len(analysis.get('suggestions', []))} generated")
 
         # Sheets
         print(f"\n📊 Google Sheets")
